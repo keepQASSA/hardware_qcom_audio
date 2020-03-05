@@ -6282,12 +6282,10 @@ static int adev_verify_devices(struct audio_device *adev)
 static int adev_close(hw_device_t *device)
 {
     size_t i;
-    struct audio_device *adev = (struct audio_device *)device;
-
-    if (!adev)
-        return 0;
 
     pthread_mutex_lock(&adev_init_lock);
+    if (!device || ((struct audio_device *)device != adev))
+        goto done;
 
     if ((--audio_device_ref_count) == 0) {
         audio_extn_snd_mon_unregister_listener(adev);
@@ -6306,10 +6304,11 @@ static int adev_close(hw_device_t *device)
             adev->adm_deinit(adev->adm_data);
         pthread_mutex_destroy(&adev->lock);
         free(device);
+        adev = NULL;
     }
 
+done:
     pthread_mutex_unlock(&adev_init_lock);
-
     return 0;
 }
 
@@ -6568,7 +6567,8 @@ static int adev_open(const hw_module_t *module, const char *name,
 
     char value[PROPERTY_VALUE_MAX];
     int trial;
-    if (property_get("audio_hal.period_size", value, NULL) > 0) {
+    if ((property_get("vendor.audio_hal.period_size", value, NULL) > 0) ||
+        (property_get("audio_hal.period_size", value, NULL) > 0)) {
         trial = atoi(value);
         if (period_size_is_plausible_for_low_latency(trial)) {
             pcm_config_low_latency.period_size = trial;
@@ -6577,7 +6577,8 @@ static int adev_open(const hw_module_t *module, const char *name,
             configured_low_latency_capture_period_size = trial;
         }
     }
-    if (property_get("audio_hal.in_period_size", value, NULL) > 0) {
+    if ((property_get("vendor.audio_hal.in_period_size", value, NULL) > 0) ||
+        (property_get("audio_hal.in_period_size", value, NULL) > 0)) {
         trial = atoi(value);
         if (period_size_is_plausible_for_low_latency(trial)) {
             configured_low_latency_capture_period_size = trial;
@@ -6592,7 +6593,8 @@ static int adev_open(const hw_module_t *module, const char *name,
     // audio_extn_utils_send_default_app_type_cfg(adev->platform, adev->mixer);
     audio_device_ref_count++;
 
-    if (property_get("audio_hal.period_multiplier", value, NULL) > 0) {
+    if ((property_get("vendor.audio_hal.period_multiplier", value, NULL) > 0) ||
+        (property_get("audio_hal.period_multiplier", value, NULL) > 0)) {
         af_period_multiplier = atoi(value);
         if (af_period_multiplier < 0) {
             af_period_multiplier = 2;
